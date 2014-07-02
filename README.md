@@ -11,6 +11,6 @@ Build
 Run
 -----
 
-  docker run -d nicescale/haproxy
+  docker run -d -p 80:80 nicescale/haproxy
 
-You can put your conf in volume for editting, view run.sh
+You can put your conf in volume for editting, and add frontend/backend to haproxy.cfg
