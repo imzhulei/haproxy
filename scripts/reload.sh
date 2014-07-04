@@ -9,4 +9,4 @@ get_sid() {
 }
 
 sid=`get_sid`
-/usr/local/bin/nicedocker exec $sid /opt/nicedocker/run.sh reload
+/usr/local/bin/nicedocker exec $sid sh -c '/usr/local/haproxy/sbin/haproxy -f /etc/haproxy/haproxy.cfg -p /var/run/haproxy.pid -sf `cat /var/run/haproxy.pid`'
