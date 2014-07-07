@@ -13,4 +13,3 @@ get_sid() {
 
 sid=`get_sid`
 /usr/local/bin/nicedocker exec $sid sh -c "$HAPROXY -f $CONF -sf \$(ps ax|grep haprox[y]|cut -c1-5)"
-/usr/local/bin/nicedocker start $sid
