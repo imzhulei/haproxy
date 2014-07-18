@@ -19,4 +19,4 @@ while [ $count -lt 500 ]; do
   sleep 0.5
   (( count++ ))
 do
-docker start $sid
+/usr/local/bin/nicedocker service $sid start

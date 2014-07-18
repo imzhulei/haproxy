@@ -13,3 +13,9 @@ get_sid() {
 
 sid=`get_sid`
 /usr/local/bin/nicedocker exec $sid sh -c "$HAPROXY -f $CONF -sf \$(ps ax|grep haprox[y]|cut -c1-5)"
+count=0
+while [ $count -lt 500 ]; do
+  docker ps | grep -q $sid || break
+  sleep 0.5
+  (( count++ ))
+do
