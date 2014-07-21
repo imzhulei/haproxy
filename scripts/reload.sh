@@ -18,5 +18,5 @@ while [ $count -lt 500 ]; do
   docker ps | grep -q $sid || break
   sleep 0.5
   (( count++ ))
-do
+done
 /usr/local/bin/nicedocker service $sid start
