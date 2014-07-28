@@ -20,7 +20,7 @@ if docker top $sid > /dev/null; then
     sleep 0.5
     count=$((count+1))
   done
-  docker top $sid > /dev/null 2>/dev/null && docker kill $sid
+  docker top $sid > /dev/null 2>&1 && docker kill $sid
 else
   echo service $sid no run.
 fi
