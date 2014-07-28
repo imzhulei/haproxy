@@ -1,6 +1,6 @@
 #!/bin/sh
 
-HAPROXY=/usr/local/haproxy/sbin/haproxy
+HAPROXY=/usr/sbin/haproxy
 CONF=/etc/haproxy/haproxy.cfg
 
 grep -E "stats auth" $CONF | grep -q '{random}' &&
