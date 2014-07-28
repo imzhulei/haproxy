@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 HAPROXY=/usr/local/haproxy/sbin/haproxy
 CONF=/etc/haproxy/haproxy.cfg
 
@@ -24,3 +26,5 @@ if docker top $sid > /dev/null; then
 else
   echo service $sid no run.
 fi
+
+exit 0
