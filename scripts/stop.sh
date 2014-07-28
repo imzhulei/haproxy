@@ -2,7 +2,7 @@
 
 set -e
 
-HAPROXY=/usr/local/haproxy/sbin/haproxy
+HAPROXY=/usr/sbin/haproxy
 CONF=/etc/haproxy/haproxy.cfg
 
 get_sid() {
