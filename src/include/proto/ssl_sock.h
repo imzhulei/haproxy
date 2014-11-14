@@ -51,8 +51,9 @@ void ssl_sock_free_all_ctx(struct bind_conf *bind_conf);
 const char *ssl_sock_get_cipher_name(struct connection *conn);
 const char *ssl_sock_get_proto_version(struct connection *conn);
 char *ssl_sock_get_version(struct connection *conn);
-int ssl_sock_get_cert_used(struct connection *conn);
-char *ssl_sock_get_common_name(struct connection *conn);
+int ssl_sock_get_cert_used_sess(struct connection *conn);
+int ssl_sock_get_cert_used_conn(struct connection *conn);
+int ssl_sock_get_remote_common_name(struct connection *conn, struct chunk *out);
 unsigned int ssl_sock_get_verify_result(struct connection *conn);
 #ifdef SSL_CTRL_SET_TLSEXT_STATUS_REQ_CB
 int ssl_sock_update_ocsp_response(struct chunk *ocsp_response, char **err);

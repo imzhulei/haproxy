@@ -2143,22 +2143,22 @@ int parse_qvalue(const char *qvalue, const char **end)
 {
 	int q = 1000;
 
-	if (!isdigit(*qvalue))
+	if (!isdigit((unsigned char)*qvalue))
 		goto out;
 	q = (*qvalue++ - '0') * 1000;
 
 	if (*qvalue++ != '.')
 		goto out;
 
-	if (!isdigit(*qvalue))
+	if (!isdigit((unsigned char)*qvalue))
 		goto out;
 	q += (*qvalue++ - '0') * 100;
 
-	if (!isdigit(*qvalue))
+	if (!isdigit((unsigned char)*qvalue))
 		goto out;
 	q += (*qvalue++ - '0') * 10;
 
-	if (!isdigit(*qvalue))
+	if (!isdigit((unsigned char)*qvalue))
 		goto out;
 	q += (*qvalue++ - '0') * 1;
  out:
@@ -2393,6 +2393,59 @@ fail:
 	return 0;
 }
 
+void http_adjust_conn_mode(struct session *s, struct http_txn *txn, struct http_msg *msg)
+{
+	int tmp = TX_CON_WANT_KAL;
+
+	if (!((s->fe->options2|s->be->options2) & PR_O2_FAKE_KA)) {
+		if ((s->fe->options & PR_O_HTTP_MODE) == PR_O_HTTP_TUN ||
+		    (s->be->options & PR_O_HTTP_MODE) == PR_O_HTTP_TUN)
+			tmp = TX_CON_WANT_TUN;
+
+		if ((s->fe->options & PR_O_HTTP_MODE) == PR_O_HTTP_PCL ||
+		    (s->be->options & PR_O_HTTP_MODE) == PR_O_HTTP_PCL)
+			tmp = TX_CON_WANT_TUN;
+	}
+
+	if ((s->fe->options & PR_O_HTTP_MODE) == PR_O_HTTP_SCL ||
+	    (s->be->options & PR_O_HTTP_MODE) == PR_O_HTTP_SCL) {
+		/* option httpclose + server_close => forceclose */
+		if ((s->fe->options & PR_O_HTTP_MODE) == PR_O_HTTP_PCL ||
+		    (s->be->options & PR_O_HTTP_MODE) == PR_O_HTTP_PCL)
+			tmp = TX_CON_WANT_CLO;
+		else
+			tmp = TX_CON_WANT_SCL;
+	}
+
+	if ((s->fe->options & PR_O_HTTP_MODE) == PR_O_HTTP_FCL ||
+	    (s->be->options & PR_O_HTTP_MODE) == PR_O_HTTP_FCL)
+		tmp = TX_CON_WANT_CLO;
+
+	if ((txn->flags & TX_CON_WANT_MSK) < tmp)
+		txn->flags = (txn->flags & ~TX_CON_WANT_MSK) | tmp;
+
+	if (!(txn->flags & TX_HDR_CONN_PRS) &&
+	    (txn->flags & TX_CON_WANT_MSK) != TX_CON_WANT_TUN) {
+		/* parse the Connection header and possibly clean it */
+		int to_del = 0;
+		if ((msg->flags & HTTP_MSGF_VER_11) ||
+		    ((txn->flags & TX_CON_WANT_MSK) >= TX_CON_WANT_SCL &&
+		     !((s->fe->options2|s->be->options2) & PR_O2_FAKE_KA)))
+			to_del |= 2; /* remove "keep-alive" */
+		if (!(msg->flags & HTTP_MSGF_VER_11))
+			to_del |= 1; /* remove "close" */
+		http_parse_connection_header(txn, msg, to_del);
+	}
+
+	/* check if client or config asks for explicit close in KAL/SCL */
+	if (((txn->flags & TX_CON_WANT_MSK) == TX_CON_WANT_KAL ||
+	     (txn->flags & TX_CON_WANT_MSK) == TX_CON_WANT_SCL) &&
+	    ((txn->flags & TX_HDR_CONN_CLO) ||                         /* "connection: close" */
+	     (!(msg->flags & HTTP_MSGF_VER_11) && !(txn->flags & TX_HDR_CONN_KAL)) || /* no "connection: k-a" in 1.0 */
+	     !(msg->flags & HTTP_MSGF_XFER_LEN) ||                     /* no length known => close */
+	     s->fe->state == PR_STSTOPPED))                            /* frontend is stopping */
+		txn->flags = (txn->flags & ~TX_CON_WANT_MSK) | TX_CON_WANT_CLO;
+}
 
 /* This stream analyser waits for a complete HTTP request. It returns 1 if the
  * processing can continue on next analysers, or zero if it either needs more
@@ -2493,7 +2546,7 @@ int http_wait_for_request(struct session *s, struct channel *req, int an_bit)
 	/* 1: we might have to print this header in debug mode */
 	if (unlikely((global.mode & MODE_DEBUG) &&
 		     (!(global.mode & MODE_QUIET) || (global.mode & MODE_VERBOSE)) &&
-		     (msg->msg_state >= HTTP_MSG_BODY || msg->msg_state == HTTP_MSG_ERROR))) {
+		     msg->msg_state >= HTTP_MSG_BODY)) {
 		char *eol, *sol;
 
 		sol = req->buf->p;
@@ -2929,58 +2982,8 @@ int http_wait_for_request(struct session *s, struct channel *req, int an_bit)
 	 * time.
 	 */
 	if (!(txn->flags & TX_HDR_CONN_PRS) ||
-	    ((s->fe->options & PR_O_HTTP_MODE) != (s->be->options & PR_O_HTTP_MODE))) {
-		int tmp = TX_CON_WANT_KAL;
-
-		if (!((s->fe->options2|s->be->options2) & PR_O2_FAKE_KA)) {
-			if ((s->fe->options & PR_O_HTTP_MODE) == PR_O_HTTP_TUN ||
-			    (s->be->options & PR_O_HTTP_MODE) == PR_O_HTTP_TUN)
-				tmp = TX_CON_WANT_TUN;
-
-			if ((s->fe->options & PR_O_HTTP_MODE) == PR_O_HTTP_PCL ||
-			    (s->be->options & PR_O_HTTP_MODE) == PR_O_HTTP_PCL)
-				tmp = TX_CON_WANT_TUN;
-		}
-
-		if ((s->fe->options & PR_O_HTTP_MODE) == PR_O_HTTP_SCL ||
-		    (s->be->options & PR_O_HTTP_MODE) == PR_O_HTTP_SCL) {
-			/* option httpclose + server_close => forceclose */
-			if ((s->fe->options & PR_O_HTTP_MODE) == PR_O_HTTP_PCL ||
-			    (s->be->options & PR_O_HTTP_MODE) == PR_O_HTTP_PCL)
-				tmp = TX_CON_WANT_CLO;
-			else
-				tmp = TX_CON_WANT_SCL;
-		}
-
-		if ((s->fe->options & PR_O_HTTP_MODE) == PR_O_HTTP_FCL ||
-		    (s->be->options & PR_O_HTTP_MODE) == PR_O_HTTP_FCL)
-			tmp = TX_CON_WANT_CLO;
-
-		if ((txn->flags & TX_CON_WANT_MSK) < tmp)
-			txn->flags = (txn->flags & ~TX_CON_WANT_MSK) | tmp;
-
-		if (!(txn->flags & TX_HDR_CONN_PRS) &&
-		    (txn->flags & TX_CON_WANT_MSK) != TX_CON_WANT_TUN) {
-			/* parse the Connection header and possibly clean it */
-			int to_del = 0;
-			if ((msg->flags & HTTP_MSGF_VER_11) ||
-			    ((txn->flags & TX_CON_WANT_MSK) >= TX_CON_WANT_SCL &&
-			     !((s->fe->options2|s->be->options2) & PR_O2_FAKE_KA)))
-				to_del |= 2; /* remove "keep-alive" */
-			if (!(msg->flags & HTTP_MSGF_VER_11))
-				to_del |= 1; /* remove "close" */
-			http_parse_connection_header(txn, msg, to_del);
-		}
-
-		/* check if client or config asks for explicit close in KAL/SCL */
-		if (((txn->flags & TX_CON_WANT_MSK) == TX_CON_WANT_KAL ||
-		     (txn->flags & TX_CON_WANT_MSK) == TX_CON_WANT_SCL) &&
-		    ((txn->flags & TX_HDR_CONN_CLO) ||                         /* "connection: close" */
-		     (!(msg->flags & HTTP_MSGF_VER_11) && !(txn->flags & TX_HDR_CONN_KAL)) || /* no "connection: k-a" in 1.0 */
-		     !(msg->flags & HTTP_MSGF_XFER_LEN) ||                     /* no length known => close */
-		     s->fe->state == PR_STSTOPPED))                            /* frontend is stopping */
-		    txn->flags = (txn->flags & ~TX_CON_WANT_MSK) | TX_CON_WANT_CLO;
-	}
+	    ((s->fe->options & PR_O_HTTP_MODE) != (s->be->options & PR_O_HTTP_MODE)))
+		http_adjust_conn_mode(s, txn, msg);
 
 	/* end of job, return OK */
 	req->analysers &= ~an_bit;
@@ -4117,8 +4120,9 @@ int http_process_req_common(struct session *s, struct channel *req, int an_bit, 
  done:	/* done with this analyser, continue with next ones that the calling
 	 * points will have set, if any.
 	 */
-	req->analysers &= ~an_bit;
 	req->analyse_exp = TICK_ETERNITY;
+ done_without_exp: /* done with this analyser, but dont reset the analyse_exp. */
+	req->analysers &= ~an_bit;
 	return 1;
 
  tarpit:
@@ -4144,7 +4148,7 @@ int http_process_req_common(struct session *s, struct channel *req, int an_bit, 
 		s->be->be_counters.denied_req++;
 	if (s->listener->counters)
 		s->listener->counters->denied_req++;
-	goto done;
+	goto done_without_exp;
 
  deny:	/* this request was blocked (denied) */
 	txn->flags |= TX_CLDENY;
@@ -4808,7 +4812,6 @@ void http_end_txn_clean_session(struct session *s)
 
 	s->logs.t_close = tv_ms_elapsed(&s->logs.tv_accept, &now);
 	session_process_counters(s);
-	session_stop_content_counters(s);
 
 	if (s->txn.status) {
 		int n;
@@ -4842,6 +4845,8 @@ void http_end_txn_clean_session(struct session *s)
 		s->do_log(s);
 	}
 
+	/* stop tracking content-based counters */
+	session_stop_content_counters(s);
 	session_update_time_stats(s);
 
 	s->logs.accept_date = date; /* user-visible date for logging */
@@ -4884,10 +4889,11 @@ void http_end_txn_clean_session(struct session *s)
 	s->req->cons->conn_retries = 0;  /* used for logging too */
 	s->req->cons->exp       = TICK_ETERNITY;
 	s->req->cons->flags    &= SI_FL_DONT_WAKE; /* we're in the context of process_session */
-	s->req->flags &= ~(CF_SHUTW|CF_SHUTW_NOW|CF_AUTO_CONNECT|CF_WRITE_ERROR|CF_STREAMER|CF_STREAMER_FAST|CF_NEVER_WAIT|CF_WAKE_CONNECT);
-	s->rep->flags &= ~(CF_SHUTR|CF_SHUTR_NOW|CF_READ_ATTACHED|CF_READ_ERROR|CF_READ_NOEXP|CF_STREAMER|CF_STREAMER_FAST|CF_WRITE_PARTIAL|CF_NEVER_WAIT);
+	s->req->flags &= ~(CF_SHUTW|CF_SHUTW_NOW|CF_AUTO_CONNECT|CF_WRITE_ERROR|CF_STREAMER|CF_STREAMER_FAST|CF_NEVER_WAIT|CF_WAKE_CONNECT|CF_WROTE_DATA);
+	s->rep->flags &= ~(CF_SHUTR|CF_SHUTR_NOW|CF_READ_ATTACHED|CF_READ_ERROR|CF_READ_NOEXP|CF_STREAMER|CF_STREAMER_FAST|CF_WRITE_PARTIAL|CF_NEVER_WAIT|CF_WROTE_DATA);
 	s->flags &= ~(SN_DIRECT|SN_ASSIGNED|SN_ADDR_SET|SN_BE_ASSIGNED|SN_FORCE_PRST|SN_IGNORE_PRST);
 	s->flags &= ~(SN_CURR_SESS|SN_REDIRECTABLE|SN_SRV_REUSED);
+	s->flags &= ~(SN_ERR_MASK|SN_FINST_MASK|SN_REDISP);
 
 	s->txn.meth = 0;
 	http_reset_txn(s);
@@ -5314,7 +5320,7 @@ int http_request_forward_body(struct session *s, struct channel *req, int an_bit
 	 * an "Expect: 100-continue" header.
 	 */
 
-	if (msg->sov) {
+	if (msg->sov > 0) {
 		/* we have msg->sov which points to the first byte of message
 		 * body, and req->buf.p still points to the beginning of the
 		 * message. We forward the headers now, as we don't need them
@@ -5428,6 +5434,8 @@ int http_request_forward_body(struct session *s, struct channel *req, int an_bit
 			 * such as last chunk of data or trailers.
 			 */
 			b_adv(req->buf, msg->next);
+			if (unlikely(!(s->req->flags & CF_WROTE_DATA)))
+				msg->sov -= msg->next;
 			msg->next = 0;
 
 			/* for keep-alive we don't want to forward closes on DONE */
@@ -5478,6 +5486,9 @@ int http_request_forward_body(struct session *s, struct channel *req, int an_bit
  missing_data:
 	/* we may have some pending data starting at req->buf->p */
 	b_adv(req->buf, msg->next);
+	if (unlikely(!(s->req->flags & CF_WROTE_DATA)))
+		msg->sov -= msg->next + MIN(msg->chunk_len, req->buf->i);
+
 	msg->next = 0;
 	msg->chunk_len -= channel_forward(req, msg->chunk_len);
 
@@ -5651,7 +5662,7 @@ int http_wait_for_response(struct session *s, struct channel *rep, int an_bit)
 	/* 1: we might have to print this header in debug mode */
 	if (unlikely((global.mode & MODE_DEBUG) &&
 		     (!(global.mode & MODE_QUIET) || (global.mode & MODE_VERBOSE)) &&
-		     (msg->msg_state >= HTTP_MSG_BODY || msg->msg_state == HTTP_MSG_ERROR))) {
+		     msg->msg_state >= HTTP_MSG_BODY)) {
 		char *eol, *sol;
 
 		sol = rep->buf->p;
@@ -6242,7 +6253,7 @@ int http_process_res_common(struct session *s, struct channel *rep, int an_bit, 
 
 		/* add response headers from the rule sets in the same order */
 		list_for_each_entry(wl, &rule_set->rsp_add, list) {
-			if (txn->status < 200)
+			if (txn->status < 200 && txn->status != 101)
 				break;
 			if (wl->cond) {
 				int ret = acl_exec_cond(wl->cond, px, s, txn, SMP_OPT_DIR_RES|SMP_OPT_FINAL);
@@ -6263,7 +6274,7 @@ int http_process_res_common(struct session *s, struct channel *rep, int an_bit, 
 	}
 
 	/* OK that's all we can do for 1xx responses */
-	if (unlikely(txn->status < 200))
+	if (unlikely(txn->status < 200 && txn->status != 101))
 		goto skip_header_mangling;
 
 	/*
@@ -6276,7 +6287,7 @@ int http_process_res_common(struct session *s, struct channel *rep, int an_bit, 
 	/*
 	 * Check for cache-control or pragma headers if required.
 	 */
-	if ((s->be->options & PR_O_CHK_CACHE) || (s->be->ck_opts & PR_CK_NOC))
+	if (((s->be->options & PR_O_CHK_CACHE) || (s->be->ck_opts & PR_CK_NOC)) && txn->status != 101)
 		check_response_for_cacheability(s, rep);
 
 	/*
@@ -6392,9 +6403,11 @@ int http_process_res_common(struct session *s, struct channel *rep, int an_bit, 
 	 * Adjust "Connection: close" or "Connection: keep-alive" if needed.
 	 * If an "Upgrade" token is found, the header is left untouched in order
 	 * not to have to deal with some client bugs : some of them fail an upgrade
-	 * if anything but "Upgrade" is present in the Connection header.
+	 * if anything but "Upgrade" is present in the Connection header. We don't
+	 * want to touch any 101 response either since it's switching to another
+	 * protocol.
 	 */
-	if (!(txn->flags & TX_HDR_CONN_UPG) &&
+	if ((txn->status != 101) && !(txn->flags & TX_HDR_CONN_UPG) &&
 	    (((txn->flags & TX_CON_WANT_MSK) != TX_CON_WANT_TUN) ||
 	     ((s->fe->options & PR_O_HTTP_MODE) == PR_O_HTTP_PCL ||
 	      (s->be->options & PR_O_HTTP_MODE) == PR_O_HTTP_PCL))) {
@@ -6492,7 +6505,7 @@ int http_response_forward_body(struct session *s, struct channel *res, int an_bi
 	/* in most states, we should abort in case of early close */
 	channel_auto_close(res);
 
-	if (msg->sov) {
+	if (msg->sov > 0) {
 		/* we have msg->sov which points to the first byte of message
 		 * body, and res->buf.p still points to the beginning of the
 		 * message. We forward the headers now, as we don't need them
@@ -9275,8 +9288,8 @@ struct http_res_rule *parse_http_res_cond(const char **args, const char *file, i
 		cur_arg = 1;
 
 		if (!*args[cur_arg] || !*args[cur_arg+1] || !*args[cur_arg+2] ||
-		    (*args[cur_arg+3] && strcmp(args[cur_arg+2], "if") != 0 && strcmp(args[cur_arg+2], "unless") != 0)) {
-			Alert("parsing [%s:%d]: 'http-request %s' expects exactly 3 arguments.\n",
+		    (*args[cur_arg+3] && strcmp(args[cur_arg+3], "if") != 0 && strcmp(args[cur_arg+3], "unless") != 0)) {
+			Alert("parsing [%s:%d]: 'http-response %s' expects exactly 3 arguments.\n",
 			      file, linenum, args[0]);
 			goto out_err;
 		}
@@ -9747,6 +9760,9 @@ smp_prefetch_http(struct proxy *px, struct session *s, void *l7, unsigned int op
 	return 1;
 }
 
+/* Note: these functinos *do* modify the sample. Even in case of success, at
+ * least the type and uint value are modified.
+ */
 #define CHECK_HTTP_MESSAGE_FIRST() \
 	do { int r = smp_prefetch_http(px, l4, l7, opt, args, smp, 1); if (r <= 0) return r; } while (0)
 
@@ -9761,20 +9777,13 @@ smp_prefetch_http(struct proxy *px, struct session *s, void *l7, unsigned int op
 static int pat_parse_meth(const char *text, struct pattern *pattern, int mflags, char **err)
 {
 	int len, meth;
-	struct chunk *trash;
 
 	len  = strlen(text);
 	meth = find_http_meth(text, len);
 
 	pattern->val.i = meth;
 	if (meth == HTTP_METH_OTHER) {
-		trash = get_trash_chunk();
-		if (trash->size < len) {
-			memprintf(err, "no space avalaible in the buffer. expect %d, provides %d",
-			          len, trash->size);
-			return 0;
-		}
-		pattern->ptr.str = trash->str;
+		pattern->ptr.str = (char *)text;
 		pattern->len = len;
 	}
 	else {
@@ -9839,8 +9848,8 @@ static struct pattern *pat_match_meth(struct sample *smp, struct pattern_expr *e
 			continue;
 
 		icase = expr->mflags & PAT_MF_IGNORE_CASE;
-		if ((icase && strncasecmp(pattern->ptr.str, smp->data.meth.str.str, smp->data.meth.str.len) != 0) ||
-		    (!icase && strncmp(pattern->ptr.str, smp->data.meth.str.str, smp->data.meth.str.len) != 0))
+		if ((icase && strncasecmp(pattern->ptr.str, smp->data.meth.str.str, smp->data.meth.str.len) == 0) ||
+		    (!icase && strncmp(pattern->ptr.str, smp->data.meth.str.str, smp->data.meth.str.len) == 0))
 			return pattern;
 	}
 	return NULL;
@@ -10247,6 +10256,7 @@ smp_fetch_base(struct proxy *px, struct session *l4, void *l7, unsigned int opt,
 	struct http_txn *txn = l7;
 	char *ptr, *end, *beg;
 	struct hdr_ctx ctx;
+	struct chunk *temp;
 
 	CHECK_HTTP_MESSAGE_FIRST();
 
@@ -10255,9 +10265,10 @@ smp_fetch_base(struct proxy *px, struct session *l4, void *l7, unsigned int opt,
 		return smp_fetch_path(px, l4, l7, opt, args, smp, kw);
 
 	/* OK we have the header value in ctx.line+ctx.val for ctx.vlen bytes */
-	memcpy(trash.str, ctx.line + ctx.val, ctx.vlen);
+	temp = get_trash_chunk();
+	memcpy(temp->str, ctx.line + ctx.val, ctx.vlen);
 	smp->type = SMP_T_STR;
-	smp->data.str.str = trash.str;
+	smp->data.str.str = temp->str;
 	smp->data.str.len = ctx.vlen;
 
 	/* now retrieve the path */
@@ -10347,8 +10358,8 @@ smp_fetch_base32_src(struct proxy *px, struct session *l4, void *l7, unsigned in
 		return 0;
 
 	temp = get_trash_chunk();
-	memcpy(temp->str + temp->len, &smp->data.uint, sizeof(smp->data.uint));
-	temp->len += sizeof(smp->data.uint);
+	*(unsigned int *)temp->str = htonl(smp->data.uint);
+	temp->len += sizeof(unsigned int);
 
 	switch (cli_conn->addr.from.ss_family) {
 	case AF_INET:
@@ -11220,7 +11231,7 @@ static int sample_conv_q_prefered(const struct arg *args, struct sample *smp)
 	while (1) {
 
 		/* Jump spaces, quit if the end is detected. */
-		while (al < end && isspace(*al))
+		while (al < end && isspace((unsigned char)*al))
 			al++;
 		if (al >= end)
 			break;
@@ -11229,7 +11240,7 @@ static int sample_conv_q_prefered(const struct arg *args, struct sample *smp)
 		token = al;
 
 		/* Look for separator: isspace(), ',' or ';'. Next value if 0 length word. */
-		while (al < end && *al != ';' && *al != ',' && !isspace(*al))
+		while (al < end && *al != ';' && *al != ',' && !isspace((unsigned char)*al))
 			al++;
 		if (al == token)
 			goto expect_comma;
@@ -11258,7 +11269,7 @@ static int sample_conv_q_prefered(const struct arg *args, struct sample *smp)
 look_for_q:
 
 		/* Jump spaces, quit if the end is detected. */
-		while (al < end && isspace(*al))
+		while (al < end && isspace((unsigned char)*al))
 			al++;
 		if (al >= end)
 			goto process_value;
@@ -11277,7 +11288,7 @@ look_for_q:
 		al++;
 
 		/* Jump spaces, process value if the end is detected. */
-		while (al < end && isspace(*al))
+		while (al < end && isspace((unsigned char)*al))
 			al++;
 		if (al >= end)
 			goto process_value;
@@ -11288,7 +11299,7 @@ look_for_q:
 		al++;
 
 		/* Jump spaces, process value if the end is detected. */
-		while (al < end && isspace(*al))
+		while (al < end && isspace((unsigned char)*al))
 			al++;
 		if (al >= end)
 			goto process_value;
@@ -11299,7 +11310,7 @@ look_for_q:
 		al++;
 
 		/* Jump spaces, process value if the end is detected. */
-		while (al < end && isspace(*al))
+		while (al < end && isspace((unsigned char)*al))
 			al++;
 		if (al >= end)
 			goto process_value;

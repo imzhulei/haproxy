@@ -131,6 +131,7 @@ static int stats_dump_stat_to_buffer(struct stream_interface *si, struct uri_aut
 static int stats_pats_list(struct stream_interface *si);
 static int stats_pat_list(struct stream_interface *si);
 static int stats_map_lookup(struct stream_interface *si);
+static void cli_release_handler(struct stream_interface *si);
 
 /*
  * cli_io_handler()
@@ -2336,6 +2337,7 @@ static void cli_io_handler(struct stream_interface *si)
 		}
 		else {	/* output functions: first check if the output buffer is closed then abort */
 			if (res->flags & (CF_SHUTR_NOW|CF_SHUTR)) {
+				cli_release_handler(si);
 				appctx->st0 = STAT_CLI_END;
 				continue;
 			}
@@ -2389,6 +2391,7 @@ static void cli_io_handler(struct stream_interface *si)
 					appctx->st0 = STAT_CLI_PROMPT;
 				break;
 			default: /* abnormal state */
+				cli_release_handler(si);
 				appctx->st0 = STAT_CLI_PROMPT;
 				break;
 			}
@@ -3710,7 +3713,7 @@ static void stats_dump_html_px_end(struct stream_interface *si, struct proxy *px
 			      "<option value=\"\"></option>"
 			      "<option value=\"ready\">Set state to READY</option>"
 			      "<option value=\"drain\">Set state to DRAIN</option>"
-			      "<option value=\"maint\">set state to MAINT</option>"
+			      "<option value=\"maint\">Set state to MAINT</option>"
 			      "<option value=\"dhlth\">Health: disable checks</option>"
 			      "<option value=\"ehlth\">Health: enable checks</option>"
 			      "<option value=\"hrunn\">Health: force UP</option>"
@@ -6045,7 +6048,7 @@ static int stats_dump_errors_to_buffer(struct stream_interface *si)
 				break;
 			case 1:
 				chunk_appendf(&trash,
-					     " backend %s (#%d) : invalid response\n"
+					     " backend %s (#%d): invalid response\n"
 					     "  frontend %s (#%d)",
 					     appctx->ctx.errors.px->id, appctx->ctx.errors.px->uuid,
 					     es->oe->id, es->oe->uuid);

@@ -1,6 +1,104 @@
 ChangeLog :
 ===========
 
+2014/10/31 : 1.5.8
+    - BUG/MAJOR: buffer: check the space left is enough or not when input data in a buffer is wrapped
+    - BUG/BUILD: revert accidental change in the makefile from latest SSL fix
+
+2014/10/30 : 1.5.7
+    - BUG/MEDIUM: regex: fix pcre_study error handling
+    - BUG/MINOR: log: fix request flags when keep-alive is enabled
+    - MINOR: ssl: add fetchs 'ssl_c_der' and 'ssl_f_der' to return DER formatted certs
+    - MINOR: ssl: add statement to force some ssl options in global.
+    - BUG/MINOR: ssl: correctly initialize ssl ctx for invalid certificates
+    - BUG/MEDIUM: http: don't dump debug headers on MSG_ERROR
+    - BUG/MAJOR: cli: explicitly call cli_release_handler() upon error
+    - BUG/MEDIUM: tcp: fix outgoing polling based on proxy protocol
+    - BUG/MEDIUM: tcp: don't use SO_ORIGINAL_DST on non-AF_INET sockets
+
+2014/10/18 : 1.5.6
+    - BUG/MEDIUM: systemd: set KillMode to 'mixed'
+    - MINOR: systemd: Check configuration before start
+    - BUG/MEDIUM: config: avoid skipping disabled proxies
+    - BUG/MINOR: config: do not accept more track-sc than configured
+    - BUG/MEDIUM: backend: fix URI hash when a query string is present
+
+2014/10/08 : 1.5.5
+    - DOC: Address issue where documentation is excluded due to a gitignore rule.
+    - MEDIUM: Improve signal handling in systemd wrapper.
+    - BUG/MINOR: config: don't propagate process binding for dynamic use_backend
+    - MINOR: Also accept SIGHUP/SIGTERM in systemd-wrapper
+    - DOC: clearly state that the "show sess" output format is not fixed
+    - MINOR: stats: fix minor typo fix in stats_dump_errors_to_buffer()
+    - DOC: indicate in the doc that track-sc* can wait if data are missing
+    - MEDIUM: http: enable header manipulation for 101 responses
+    - BUG/MEDIUM: config: propagate frontend to backend process binding again.
+    - MEDIUM: config: properly propagate process binding between proxies
+    - MEDIUM: config: make the frontends automatically bind to the listeners' processes
+    - MEDIUM: config: compute the exact bind-process before listener's maxaccept
+    - MEDIUM: config: only warn if stats are attached to multi-process bind directives
+    - MEDIUM: config: report it when tcp-request rules are misplaced
+    - MINOR: config: detect the case where a tcp-request content rule has no inspect-delay
+    - MEDIUM: systemd-wrapper: support multiple executable versions and names
+    - BUG/MEDIUM: remove debugging code from systemd-wrapper
+    - BUG/MEDIUM: http: adjust close mode when switching to backend
+    - BUG/MINOR: config: don't propagate process binding on fatal errors.
+    - BUG/MEDIUM: check: rule-less tcp-check must detect connect failures
+    - BUG/MINOR: tcp-check: report the correct failed step in the status
+    - DOC: indicate that weight zero is reported as DRAIN
+
+2014/09/02 : 1.5.4
+    - BUG: config: error in http-response replace-header number of arguments
+    - BUG/MINOR: Fix search for -p argument in systemd wrapper.
+    - BUG/MEDIUM: auth: fix segfault with http-auth and a configuration with an unknown encryption algorithm
+    - BUG/MEDIUM: config: userlists should ensure that encrypted passwords are supported
+    - MEDIUM: connection: add new bit in Proxy Protocol V2
+    - BUG/MINOR: server: move the directive #endif to the end of file
+    - BUG/MEDIUM: http: tarpit timeout is reset
+    - BUG/MAJOR: tcp: fix a possible busy spinning loop in content track-sc*
+    - BUG/MEDIUM: http: fix inverted condition in pat_match_meth()
+    - BUG/MEDIUM: http: fix improper parsing of HTTP methods for use with ACLs
+    - BUG/MINOR: pattern: remove useless allocation of unused trash in pat_parse_reg()
+    - BUG/MEDIUM: acl: correctly compute the output type when a converter is used
+    - CLEANUP: acl: cleanup some of the redundancy and spaghetti after last fix
+    - BUG/CRITICAL: http: don't update msg->sov once data start to leave the buffer
+
+2014/07/25 : 1.5.3
+    - DOC: fix typo in Unix Socket commands
+    - BUG/MEDIUM: connection: fix memory corruption when building a proxy v2 header
+    - BUG/MEDIUM: ssl: Fix a memory leak in DHE key exchange
+    - DOC: mention that Squid correctly responds 400 to PPv2 header
+    - BUG/MINOR: http: base32+src should use the big endian version of base32
+    - BUG/MEDIUM: connection: fix proxy v2 header again!
+
+2014/07/12 : 1.5.2
+    - BUG/MEDIUM: backend: Update hash to use unsigned int throughout
+    - BUG/MINOR: ssl: Fix external function in order not to return a pointer on an internal trash buffer.
+    - DOC: expand the docs for the provided stats.
+    - BUG/MEDIUM: unix: do not unlink() abstract namespace sockets upon failure.
+    - MINOR: stats: fix minor typo in HTML page
+    - BUG/MEDIUM: http: fetch "base" is not compatible with set-header
+    - BUG/MINOR: counters: do not untrack counters before logging
+    - BUG/MAJOR: sample: correctly reinitialize sample fetch context before calling sample_process()
+    - MINOR: stick-table: make stktable_fetch_key() indicate why it failed
+    - BUG/MEDIUM: counters: fix track-sc* to wait on unstable contents
+    - BUILD: remove TODO from the spec file and add README
+    - MINOR: log: make MAX_SYSLOG_LEN overridable at build time
+    - MEDIUM: log: support a user-configurable max log line length
+    - DOC: provide an example of how to use ssl_c_sha1
+    - BUILD: http: fix isdigit & isspace warnings on Solaris
+    - BUG/MINOR: listener: set the listener's fd to -1 after deletion
+    - BUG/MEDIUM: unix: failed abstract socket binding is retryable
+    - MEDIUM: listener: implement a per-protocol pause() function
+    - MEDIUM: listener: support rebinding during resume()
+    - BUG/MEDIUM: unix: completely unbind abstract sockets during a pause()
+    - DOC: explicitly mention the limits of abstract namespace sockets
+    - DOC: minor fix on {sc,src}_kbytes_{in,out}
+    - DOC: fix alphabetical sort of converters
+    - BUG/MAJOR: http: correctly rewind the request body after start of forwarding
+    - DOC: remove references to CPU=native in the README
+    - DOC: mention that "compression offload" is ignored in defaults section
+
 2014/06/24 : 1.5.1
     - BUG/MINOR: config: http-request replace-header arg typo
     - BUG/MINOR: ssl: rejects OCSP response without nextupdate.
