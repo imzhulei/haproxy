@@ -63,9 +63,9 @@ int be_lastsession(const struct proxy *be)
 }
 
 /* helper function to invoke the correct hash method */
-static unsigned long gen_hash(const struct proxy* px, const char* key, unsigned long len)
+static unsigned int gen_hash(const struct proxy* px, const char* key, unsigned long len)
 {
-	unsigned long hash;
+	unsigned int hash;
 
 	switch (px->lbprm.algo & BE_LB_HASH_FUNC) {
 	case BE_LB_HFCN_DJB2:
@@ -183,7 +183,7 @@ struct server *get_server_sh(struct proxy *px, const char *addr, int len)
  */
 struct server *get_server_uh(struct proxy *px, char *uri, int uri_len)
 {
-	unsigned long hash = 0;
+	unsigned int hash = 0;
 	int c;
 	int slashes = 0;
 	const char *start, *end;
@@ -200,7 +200,7 @@ struct server *get_server_uh(struct proxy *px, char *uri, int uri_len)
 
 	start = end = uri;
 	while (uri_len--) {
-		c = *end++;
+		c = *end;
 		if (c == '/') {
 			slashes++;
 			if (slashes == px->uri_dirs_depth1) /* depth+1 */
@@ -208,6 +208,7 @@ struct server *get_server_uh(struct proxy *px, char *uri, int uri_len)
 		}
 		else if (c == '?' && !px->uri_whole)
 			break;
+		end++;
 	}
 
 	hash = gen_hash(px, start, (end - start));
@@ -232,7 +233,7 @@ struct server *get_server_uh(struct proxy *px, char *uri, int uri_len)
  */
 struct server *get_server_ph(struct proxy *px, const char *uri, int uri_len)
 {
-	unsigned long hash = 0;
+	unsigned int hash = 0;
 	const char *start, *end;
 	const char *p;
 	const char *params;
@@ -294,7 +295,7 @@ struct server *get_server_ph(struct proxy *px, const char *uri, int uri_len)
  */
 struct server *get_server_ph_post(struct session *s)
 {
-	unsigned long    hash = 0;
+	unsigned int hash = 0;
 	struct http_txn *txn  = &s->txn;
 	struct channel   *req = s->req;
 	struct http_msg *msg  = &txn->req;
@@ -372,7 +373,7 @@ struct server *get_server_ph_post(struct session *s)
  */
 struct server *get_server_hh(struct session *s)
 {
-	unsigned long    hash = 0;
+	unsigned int hash = 0;
 	struct http_txn *txn  = &s->txn;
 	struct proxy    *px   = s->be;
 	unsigned int     plen = px->hh_len;
@@ -444,7 +445,7 @@ struct server *get_server_hh(struct session *s)
 /* RDP Cookie HASH.  */
 struct server *get_server_rch(struct session *s)
 {
-	unsigned long    hash = 0;
+	unsigned int hash = 0;
 	struct proxy    *px   = s->be;
 	unsigned long    len;
 	int              ret;
